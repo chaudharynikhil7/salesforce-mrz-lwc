@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MRZ Scanner</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Salesforce Sans", Arial, sans-serif;
+    }
+    .container {
+      padding: 20px;
+    }
+    .btn {
+      background-color: #0176d3;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    .btn:hover {
+      background-color: #014486;
+    }
+    .btn:disabled {
+      background-color: #c9c9c9;
+      cursor: not-allowed;
+    }
+    .result-box {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f4f6f9;
+      border-radius: 4px;
+      display: none;
+    }
+    .result-box pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .error {
+      color: #c23934;
+      margin-top: 10px;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/dynamsoft-mrz-scanner@3.0.4/dist/mrz-scanner.bundle.js"></script>
+</head>
+<html>
+  <body>
+    <div class="container">
+      <h3>MRZ Scanner</h3>
+      <div style="margin-bottom: 20px">
+        <button id="cameraBtn" class="btn">Scan with Camera</button>
+        <button id="uploadBtn" class="btn">Upload Image</button>
+      </div>
+      <input type="file" id="fileInput" accept="image/*,application/pdf" style="display: none" />
+      <div id="error" class="error"></div>
+      <div id="resultBox" class="result-box">
+        <h3>MRZ Result:</h3>
+        <pre id="result"></pre>
+      </div>
+    </div>
+
+    <script>
+      const fileInput = document.getElementById("fileInput");
+      const cameraBtn = document.getElementById("cameraBtn");
+      const uploadBtn = document.getElementById("uploadBtn");
+      const resultBox = document.getElementById("resultBox");
+      const resultPre = document.getElementById("result");
+      const errorDiv = document.getElementById("error");
+
+      let mrzScanner;
+
+      // Wait for Dynamsoft library to load
+      window.addEventListener("load", async () => {
+        try {
+          // Wait for Dynamsoft to be available
+          if (typeof Dynamsoft === "undefined") {
+            throw new Error("Dynamsoft library not loaded");
+          }
+
+          mrzScanner = new Dynamsoft.MRZScanner({
+            license: "DLS2eyJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSJ9",
+            showResultView: false,
+          });
+          window.parent.postMessage({ type: "MRZ_INITIALIZED" }, "*");
+        } catch (error) {
+          errorDiv.textContent = "Failed to initialize scanner: " + error.message;
+          cameraBtn.disabled = true;
+          uploadBtn.disabled = true;
+        }
+      });
+
+      // Camera scan - launches the full UI with camera
+      cameraBtn.addEventListener("click", async () => {
+        try {
+          cameraBtn.disabled = true;
+          uploadBtn.disabled = true;
+          errorDiv.textContent = "Starting camera...";
+          resultBox.style.display = "none";
+
+          console.log("Starting camera scan");
+          const result = await mrzScanner.launch();
+          console.log("Camera scan result:", result);
+
+          if (result) {
+            console.log("checking");
+            if (result.status && result.status.code === 1) {
+              // Cancelled
+              errorDiv.textContent = "Scan cancelled";
+            } else if (result.data) {
+              // Success - send to parent LWC only
+              errorDiv.textContent = "";
+
+              // Post message to parent LWC - send only serializable data
+              window.parent.postMessage(
+                {
+                  type: "MRZ_RESULT",
+                  data: {
+                    mrzText: result.data.mrzText,
+                    parsedMRZ: result.data.parsedMRZ,
+                  },
+                },
+                "*"
+              );
+            } else {
+              errorDiv.textContent = "No MRZ detected";
+            }
+          }
+        } catch (error) {
+          console.error("Camera error:", error);
+          errorDiv.textContent = "Camera error: " + error.message;
+        } finally {
+          cameraBtn.disabled = false;
+          uploadBtn.disabled = false;
+        }
+      });
+
+      // Upload image scan
+      uploadBtn.addEventListener("click", () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener("change", async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        cameraBtn.disabled = true;
+        uploadBtn.disabled = true;
+        errorDiv.textContent = "Processing...";
+        resultBox.style.display = "none";
+
+        try {
+          console.log("Starting scan with file:", file.name);
+          const result = await mrzScanner.launch(file);
+          console.log("Scan result:", result);
+
+          errorDiv.textContent = "";
+
+          if (result && result.data) {
+            // Success - send to parent LWC only
+            errorDiv.textContent = "";
+
+            // Post message to parent LWC - send only serializable data
+            window.parent.postMessage(
+              {
+                type: "MRZ_RESULT",
+                data: {
+                  mrzText: result.data.mrzText,
+                  parsedMRZ: result.data.parsedMRZ,
+                },
+              },
+              "*"
+            );
+          } else if (result && result.status && result.status.code === 1) {
+            // User clicked cancel/done
+            errorDiv.textContent = "";
+          } else {
+            errorDiv.textContent = "No MRZ detected in the image";
+          }
+        } catch (error) {
+          console.error("Scanner error:", error);
+          errorDiv.textContent = "Scanner error: " + (error.message || "Unknown error");
+        } finally {
+          cameraBtn.disabled = false;
+          uploadBtn.disabled = false;
+          fileInput.value = "";
+        }
+      });
+    </script>
+  </body>
+</html>

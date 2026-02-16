@@ -1,0 +1,12 @@
+<template>
+  <lightning-card title="Barcode Scanner" icon-name="custom:custom41">
+    <div class="slds-p-around_medium">
+      <div class="viewer" style="height: 600px; width: 100%"></div>
+
+      <div if:true="{barcodeResult}" class="slds-box slds-theme_shade slds-m-top_medium">
+        <h3 class="slds-text-heading_small slds-m-bottom_small">Barcode Result:</h3>
+        <pre class="result-text">{barcodeResult}</pre>
+      </div>
+    </div>
+  </lightning-card>
+</template>

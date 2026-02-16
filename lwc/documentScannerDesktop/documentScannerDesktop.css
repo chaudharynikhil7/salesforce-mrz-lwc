@@ -1,0 +1,14 @@
+.viewer {
+  min-height: 700px;
+  background-color: #f4f6f9;
+}
+
+.status-text {
+  color: #3e3e3c;
+  font-size: 13px;
+}
+
+.result-text {
+  color: #2e844a;
+  font-size: 13px;
+}

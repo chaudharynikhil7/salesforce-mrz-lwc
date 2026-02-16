@@ -1,0 +1,562 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document Scanner (Desktop)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Salesforce Sans", Arial, sans-serif;
+        background-color: #f4f6f9;
+      }
+      .container {
+        padding: 15px;
+      }
+      .header {
+        margin-bottom: 15px;
+      }
+      .header h3 {
+        margin: 0 0 10px 0;
+        color: #080707;
+        font-size: 16px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 15px;
+        align-items: center;
+      }
+      .scanner-select {
+        padding: 8px 12px;
+        border: 1px solid #dddbda;
+        border-radius: 4px;
+        font-size: 13px;
+        min-width: 200px;
+        background-color: white;
+      }
+      .btn {
+        background-color: #0176d3;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: background-color 0.2s;
+      }
+      .btn:hover {
+        background-color: #014486;
+      }
+      .btn:disabled {
+        background-color: #c9c9c9;
+        cursor: not-allowed;
+      }
+      .btn-secondary {
+        background-color: #ffffff;
+        color: #0176d3;
+        border: 1px solid #0176d3;
+      }
+      .btn-secondary:hover {
+        background-color: #f0f8ff;
+      }
+      .btn-danger {
+        background-color: #ea001e;
+      }
+      .btn-danger:hover {
+        background-color: #ba0517;
+      }
+      .viewer-container {
+        background-color: white;
+        border: 1px solid #dddbda;
+        border-radius: 4px;
+        padding: 10px;
+        min-height: 500px;
+      }
+      #dwtContainer {
+        width: 100%;
+        height: 500px;
+      }
+      .message-box {
+        margin-top: 15px;
+        padding: 12px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+      .message-info {
+        background-color: #e5f6fd;
+        color: #0176d3;
+        border: 1px solid #b3d7ff;
+      }
+      .message-error {
+        background-color: #fef1f1;
+        color: #c23934;
+        border: 1px solid #f4a9a9;
+      }
+      .message-success {
+        background-color: #e8f8e8;
+        color: #2e844a;
+        border: 1px solid #91db8b;
+      }
+      .hidden {
+        display: none;
+      }
+
+      .service-notice {
+        background-color: #fffbe5;
+        border: 1px solid #e5d56e;
+        color: #8a6d3b;
+        padding: 12px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        font-size: 13px;
+      }
+      .service-notice a {
+        color: #0176d3;
+        text-decoration: none;
+      }
+      .service-notice a:hover {
+        text-decoration: underline;
+      }
+      .image-count {
+        font-size: 13px;
+        color: #3e3e3c;
+        padding: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h3>Document Scanner (Desktop)</h3>
+      </div>
+
+      <div id="serviceNotice" class="service-notice hidden">
+        <strong>Dynamsoft Service Required:</strong> To use this scanner, you need to install the Dynamsoft Service.
+        <a href="https://www.dynamsoft.com/web-twain/downloads/" target="_blank">Download Dynamsoft Service</a>
+      </div>
+
+      <div class="controls">
+        <select id="scannerSelect" class="scanner-select" disabled>
+          <option value="">Loading scanners...</option>
+        </select>
+        <button id="refreshBtn" class="btn btn-secondary" disabled title="Refresh scanner list">↻ Refresh</button>
+      </div>
+
+      <div class="controls">
+        <button id="scanBtn" class="btn" disabled>Scan</button>
+        <button id="loadBtn" class="btn btn-secondary" disabled>Load Image</button>
+        <button id="rotateBtn" class="btn btn-secondary" disabled>Rotate</button>
+        <button id="deleteBtn" class="btn btn-danger" disabled>Delete</button>
+        <button id="deleteAllBtn" class="btn btn-danger" disabled>Delete All</button>
+        <button id="editorBtn" class="btn btn-secondary" disabled>Edit</button>
+        <button id="saveBtn" class="btn" disabled>Save PDF</button>
+      </div>
+
+      <div id="imageCount" class="image-count">Images: 0</div>
+
+      <div class="viewer-container">
+        <div id="dwtContainer"></div>
+      </div>
+
+      <div id="messageBox" class="message-box hidden"></div>
+    </div>
+
+    <!-- Dynamic Web TWAIN Scripts - Version 19.3.1 from jsdelivr CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/dwt@19.3.1/dist/dynamsoft.webtwain.min.js"></script>
+
+    <script>
+      // DOM Elements
+      const serviceNotice = document.getElementById("serviceNotice");
+      const scannerSelect = document.getElementById("scannerSelect");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const scanBtn = document.getElementById("scanBtn");
+      const loadBtn = document.getElementById("loadBtn");
+      const rotateBtn = document.getElementById("rotateBtn");
+      const deleteBtn = document.getElementById("deleteBtn");
+      const deleteAllBtn = document.getElementById("deleteAllBtn");
+      const editorBtn = document.getElementById("editorBtn");
+      const saveBtn = document.getElementById("saveBtn");
+      const messageBox = document.getElementById("messageBox");
+      const imageCountDiv = document.getElementById("imageCount");
+      const dwtContainer = document.getElementById("dwtContainer");
+
+      // DWT Variables
+      let DWTObject = null;
+      let devices = [];
+      let imageEditor = null;
+
+      // License Key
+      const LICENSE_KEY =
+        "DLS2eyJoYW5kc2hha2VDb2RlIjoiMTAwMTg0NTA5LU1UQXdNVGcwTlRBNUxVTjFjM1J2YldsNlpXUXRWSEpwWVd4UWNtOXEiLCJtYWluU2VydmVyVVJMIjoiaHR0cHM6Ly9tZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwib3JnYW5pemF0aW9uSUQiOiIxMDAxODQ1MDkiLCJzdGFuZGJ5U2VydmVyVVJMIjoiaHR0cHM6Ly9zZGxzLmR5bmFtc29mdG9ubGluZS5jb20vIiwiY2hlY2tDb2RlIjo1NTMwNzgwOTN9";
+
+      // Utility Functions
+      function showLoading(show) {
+        // DWT has its own built-in loading spinner, just notify parent
+        notifyParent("DWT_LOADING", { loading: show });
+      }
+
+      function showMessage(message, type = "info") {
+        messageBox.textContent = message;
+        messageBox.className = `message-box message-${type}`;
+        messageBox.classList.remove("hidden");
+
+        // Auto-hide after 5 seconds for success/info messages
+        if (type !== "error") {
+          setTimeout(() => {
+            messageBox.classList.add("hidden");
+          }, 5000);
+        }
+      }
+
+      function hideMessage() {
+        messageBox.classList.add("hidden");
+      }
+
+      function notifyParent(type, data = {}) {
+        try {
+          window.parent.postMessage({ type, ...data }, "*");
+        } catch (e) {
+          console.error("Failed to notify parent:", e);
+        }
+      }
+
+      function updateImageCount() {
+        if (DWTObject) {
+          const count = DWTObject.HowManyImagesInBuffer;
+          imageCountDiv.textContent = `Images: ${count}`;
+
+          // Enable/disable buttons based on image count
+          const hasImages = count > 0;
+          rotateBtn.disabled = !hasImages;
+          deleteBtn.disabled = !hasImages;
+          deleteAllBtn.disabled = !hasImages;
+          editorBtn.disabled = !hasImages;
+          saveBtn.disabled = !hasImages;
+        }
+      }
+
+      function enableButtons(enable) {
+        scanBtn.disabled = !enable || devices.length === 0;
+        loadBtn.disabled = !enable;
+        refreshBtn.disabled = !enable;
+        scannerSelect.disabled = !enable;
+        updateImageCount();
+      }
+
+      // Initialize DWT
+      async function initDWT() {
+        showLoading(true);
+        notifyParent("DWT_STATUS", { message: "Initializing Document Scanner..." });
+        console.log("[DWT] Starting initialization...");
+
+        // Safety timeout - hide loading after 15 seconds no matter what
+        const safetyTimeout = setTimeout(function () {
+          console.warn("[DWT] Safety timeout reached - hiding loading overlay");
+          showLoading(false);
+          if (!DWTObject) {
+            showMessage("Initialization timed out. Please refresh the page.", "error");
+          }
+        }, 15000);
+
+        try {
+          // Check if Dynamsoft is loaded
+          if (typeof Dynamsoft === "undefined") {
+            throw new Error("Dynamsoft library not loaded. Please check Trusted URLs in Salesforce Setup.");
+          }
+          console.log("[DWT] Dynamsoft library found");
+
+          // Configure DWT - following working sample pattern
+          Dynamsoft.DWT.ProductKey = LICENSE_KEY;
+          Dynamsoft.DWT.AutoLoad = false;
+          Dynamsoft.DWT.ResourcesPath = "https://cdn.jsdelivr.net/npm/dwt@19.3.1/dist";
+          Dynamsoft.DWT.ServiceInstallerLocation = "https://cdn.jsdelivr.net/npm/dwt@19.3.1/dist";
+          Dynamsoft.DWT.Containers = [{ ContainerId: "dwtContainer", Width: "100%", Height: 500 }];
+          console.log("[DWT] Configuration set, registering OnWebTwainReady event...");
+
+          // Register OnWebTwainReady event
+          Dynamsoft.DWT.RegisterEvent("OnWebTwainReady", function () {
+            console.log("[DWT] OnWebTwainReady fired!");
+            clearTimeout(safetyTimeout);
+
+            try {
+              DWTObject = Dynamsoft.DWT.GetWebTwain("dwtContainer");
+              console.log("[DWT] GetWebTwain result:", DWTObject ? "success" : "null");
+
+              if (DWTObject) {
+                DWTObject.Viewer.width = "100%";
+                DWTObject.Viewer.height = 500;
+                DWTObject.SetViewMode(1, 1);
+                console.log("[DWT] Viewer configured, loading devices...");
+
+                // Load devices (don't await - just let it run)
+                loadDevices()
+                  .then(function () {
+                    console.log("[DWT] Devices loaded successfully");
+                    // Re-enable buttons after devices are loaded
+                    enableButtons(true);
+                  })
+                  .catch(function (err) {
+                    console.error("[DWT] Device loading error:", err);
+                  });
+
+                enableButtons(true);
+                showLoading(false);
+                hideMessage();
+                console.log("[DWT] Initialization complete!");
+
+                notifyParent("DWT_INITIALIZED");
+                notifyParent("DWT_STATUS", { message: "Document Scanner ready" });
+              } else {
+                throw new Error("Failed to get WebTwain object");
+              }
+            } catch (innerError) {
+              console.error("[DWT] Error in OnWebTwainReady:", innerError);
+              showLoading(false);
+              showMessage("Initialization error: " + innerError.message, "error");
+              notifyParent("DWT_ERROR", { message: innerError.message });
+            }
+          });
+
+          console.log("[DWT] Calling Dynamsoft.DWT.Load()...");
+          // Load DWT
+          Dynamsoft.DWT.Load();
+        } catch (error) {
+          console.error("[DWT] Init error:", error);
+          clearTimeout(safetyTimeout);
+          showLoading(false);
+          showMessage("Failed to initialize: " + error.message, "error");
+          notifyParent("DWT_ERROR", { message: error.message });
+        }
+      }
+
+      // Load available scanners
+      async function loadDevices() {
+        try {
+          devices = await DWTObject.GetDevicesAsync();
+
+          scannerSelect.innerHTML = "";
+
+          if (devices.length === 0) {
+            scannerSelect.innerHTML = '<option value="">No scanners found</option>';
+            notifyParent("DWT_STATUS", { message: "No scanners found" });
+          } else {
+            devices.forEach((device, index) => {
+              const option = document.createElement("option");
+              option.value = index;
+              option.textContent = device.displayName;
+              scannerSelect.appendChild(option);
+            });
+
+            notifyParent("DWT_DEVICES_LOADED", {
+              devices: devices.map((d) => d.displayName),
+            });
+          }
+        } catch (error) {
+          console.error("Failed to load devices:", error);
+          scannerSelect.innerHTML = '<option value="">Error loading scanners</option>';
+          showMessage("Failed to load scanners: " + error.message, "error");
+        }
+      }
+
+      // Scan document
+      async function scan() {
+        if (!DWTObject || devices.length === 0) {
+          showMessage("No scanner selected", "error");
+          return;
+        }
+
+        const selectedIndex = parseInt(scannerSelect.value);
+        if (isNaN(selectedIndex) || selectedIndex < 0) {
+          showMessage("Please select a scanner", "error");
+          return;
+        }
+
+        try {
+          showLoading(true);
+          notifyParent("DWT_STATUS", { message: "Scanning..." });
+
+          await DWTObject.SelectDeviceAsync(devices[selectedIndex]);
+          await DWTObject.AcquireImageAsync({
+            IfShowUI: true,
+            Resolution: 200,
+            PixelType: Dynamsoft.DWT.EnumDWT_PixelType.TWPT_RGB,
+          });
+          await DWTObject.CloseSourceAsync();
+
+          showLoading(false);
+          showMessage("Scan completed successfully", "success");
+
+          notifyParent("DWT_SCAN_COMPLETE", {
+            imageCount: DWTObject.HowManyImagesInBuffer,
+          });
+
+          updateImageCount();
+        } catch (error) {
+          showLoading(false);
+          console.error("Scan failed:", error);
+          showMessage("Scan failed: " + error.message, "error");
+          notifyParent("DWT_ERROR", { message: "Scan failed: " + error.message });
+        }
+      }
+
+      // Load image from file
+      function loadImage() {
+        if (!DWTObject) return;
+
+        DWTObject.IfShowFileDialog = true;
+        DWTObject.LoadImageEx(
+          "",
+          Dynamsoft.DWT.EnumDWT_ImageType.IT_ALL,
+          function () {
+            showMessage("Image loaded successfully", "success");
+            updateImageCount();
+          },
+          function (errCode, errStr) {
+            if (errCode !== 0) {
+              showMessage("Failed to load image: " + errStr, "error");
+            }
+          },
+        );
+      }
+
+      // Rotate current image
+      function rotateImage() {
+        if (!DWTObject || DWTObject.HowManyImagesInBuffer === 0) {
+          showMessage("No image to rotate", "error");
+          return;
+        }
+
+        DWTObject.RotateAsync(DWTObject.CurrentImageIndexInBuffer, 90, true)
+          .then(() => {
+            showMessage("Image rotated", "success");
+          })
+          .catch((error) => {
+            showMessage("Rotate failed: " + error.message, "error");
+          });
+      }
+
+      // Delete current image
+      function deleteImage() {
+        if (!DWTObject || DWTObject.HowManyImagesInBuffer === 0) {
+          showMessage("No image to delete", "error");
+          return;
+        }
+
+        DWTObject.RemoveImage(DWTObject.CurrentImageIndexInBuffer);
+        showMessage("Image deleted", "success");
+        updateImageCount();
+      }
+
+      // Delete all images
+      function deleteAllImages() {
+        if (!DWTObject || DWTObject.HowManyImagesInBuffer === 0) {
+          showMessage("No images to delete", "error");
+          return;
+        }
+
+        DWTObject.RemoveAllImages();
+        showMessage("All images deleted", "success");
+        updateImageCount();
+      }
+
+      // Show image editor
+      function showEditor() {
+        if (!DWTObject || DWTObject.HowManyImagesInBuffer === 0) {
+          showMessage("No images to edit", "error");
+          return;
+        }
+
+        try {
+          const editorSettings = {
+            element: dwtContainer,
+            width: "100%",
+            height: 500,
+          };
+
+          if (!imageEditor) {
+            imageEditor = DWTObject.Viewer.createImageEditor(editorSettings);
+            DWTObject.RegisterEvent("CloseImageEditorUI", function () {
+              DWTObject.Viewer.show();
+              imageEditor = null;
+            });
+          }
+
+          DWTObject.Viewer.hide();
+          imageEditor.show();
+        } catch (error) {
+          showMessage("Editor failed: " + error.message, "error");
+        }
+      }
+
+      // Save as PDF
+      function savePDF() {
+        if (!DWTObject || DWTObject.HowManyImagesInBuffer === 0) {
+          showMessage("No images to save", "error");
+          return;
+        }
+
+        const filename = "scanned_document_" + new Date().toISOString().slice(0, 10) + ".pdf";
+
+        DWTObject.SaveAllAsPDF(
+          filename,
+          function () {
+            showMessage("Saved as " + filename, "success");
+            notifyParent("DWT_SAVE_COMPLETE", { filename: filename });
+          },
+          function (errCode, errStr) {
+            showMessage("Save failed: " + errStr, "error");
+            notifyParent("DWT_ERROR", { message: "Save failed: " + errStr });
+          },
+        );
+      }
+
+      // Event Listeners
+      refreshBtn.addEventListener("click", loadDevices);
+      scanBtn.addEventListener("click", scan);
+      loadBtn.addEventListener("click", loadImage);
+      rotateBtn.addEventListener("click", rotateImage);
+      deleteBtn.addEventListener("click", deleteImage);
+      deleteAllBtn.addEventListener("click", deleteAllImages);
+      editorBtn.addEventListener("click", showEditor);
+      saveBtn.addEventListener("click", savePDF);
+
+      // Wait for Dynamsoft scripts to load
+      function waitForDynamsoft(callback, maxAttempts = 50) {
+        let attempts = 0;
+        const checkInterval = setInterval(function () {
+          attempts++;
+          if (typeof Dynamsoft !== "undefined" && Dynamsoft.DWT) {
+            clearInterval(checkInterval);
+            callback();
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkInterval);
+            showLoading(false);
+            serviceNotice.classList.remove("hidden");
+            showMessage(
+              "Failed to load Dynamsoft library. Please ensure Trusted URLs are configured in Salesforce Setup for: unpkg.com",
+              "error",
+            );
+            notifyParent("DWT_ERROR", { message: "Dynamsoft library not loaded" });
+          }
+        }, 100);
+      }
+
+      // Initialize on load
+      window.addEventListener("load", function () {
+        showLoading(true);
+        notifyParent("DWT_STATUS", { message: "Loading Dynamsoft library..." });
+        // Wait for Dynamsoft to be available
+        waitForDynamsoft(function () {
+          initDWT();
+        });
+      });
+    </script>
+  </body>
+</html>
